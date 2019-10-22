@@ -1,0 +1,4 @@
+rootProject.name = 'object-mapper'
+include 'object-mapper-processor'
+include 'object-mapper-annotation'
+
