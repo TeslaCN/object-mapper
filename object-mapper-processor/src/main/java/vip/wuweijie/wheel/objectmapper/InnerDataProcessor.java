@@ -26,8 +26,6 @@ import java.util.Set;
 @SupportedAnnotationTypes({"vip.wuweijie.wheel.objectmapper.InnerData",})
 public class InnerDataProcessor extends AbstractProcessor {
 
-    private static final String INNER_SUFFIX = "__Inner";
-    private static final String INNER_PREFIX = "__";
     private static final Set<String> EXCEPT = new HashSet<>(Arrays.asList("main", "<init>"));
     private Messager messager;
     private JavacTrees trees;
@@ -53,7 +51,7 @@ public class InnerDataProcessor extends AbstractProcessor {
             jcTree.accept(new TreeTranslator() {
                 @Override
                 public void visitClassDef(JCTree.JCClassDecl jcClassDecl) {
-                    if (jcClassDecl.name.toString().endsWith(INNER_SUFFIX)) {
+                    if (NameUtil.isInnerClass(jcClassDecl.name.toString())) {
                         super.visitClassDef(jcClassDecl);
                         return;
                     }
@@ -97,7 +95,14 @@ public class InnerDataProcessor extends AbstractProcessor {
 
         defs[0] = defs[0].append(generateConstructor());
 
-        JCTree.JCClassDecl innerClassDecl = treeMaker.ClassDef(treeMaker.Modifiers(Flags.PUBLIC), innerClassName(jcClassDecl.name), List.nil(), jcClassDecl.extending, List.nil(), defs[0]);
+        JCTree.JCClassDecl innerClassDecl = treeMaker.ClassDef(
+                treeMaker.Modifiers(Flags.PUBLIC),
+                innerClassName(jcClassDecl.name),
+                List.nil(),
+                jcClassDecl.extending,
+                List.nil(),
+                defs[0]);
+
         for (JCTree jcTree : defsArray[0]) {
             innerClassDecl.defs = innerClassDecl.defs.append(jcTree);
         }
@@ -112,12 +117,19 @@ public class InnerDataProcessor extends AbstractProcessor {
     private JCTree.JCMethodDecl generateConstructor() {
         ListBuffer<JCTree.JCStatement> statements = new ListBuffer<>();
         statements.append(treeMaker.Exec(treeMaker.Apply(List.nil(), treeMaker.Ident(names.fromString("super")), List.nil())));
-        return treeMaker.MethodDef(treeMaker.Modifiers(Flags.PUBLIC), names.fromString("<init>"), null, List.nil(), List.nil(), List.nil(), treeMaker.Block(0, statements.toList()), null);
+        return treeMaker.MethodDef(treeMaker.Modifiers(Flags.PUBLIC),
+                names.fromString("<init>"),
+                null,
+                List.nil(),
+                List.nil(),
+                List.nil(),
+                treeMaker.Block(0, statements.toList()),
+                null);
     }
 
     private Name innerClassName(Name name) {
         String className = name.toString();
-        return names.fromString(INNER_PREFIX + className + INNER_SUFFIX);
+        return names.fromString(NameUtil.toInnerClassName(className));
     }
 
     /**
@@ -129,9 +141,19 @@ public class InnerDataProcessor extends AbstractProcessor {
      */
     private JCTree.JCMethodDecl makeGetterMethodDecl(JCTree.JCClassDecl jcClassDecl, JCTree.JCVariableDecl jcVariableDecl) {
         ListBuffer<JCTree.JCStatement> statements = new ListBuffer<>();
-        statements.append(treeMaker.Return(treeMaker.Select(treeMaker.Select(treeMaker.Ident(jcClassDecl.name), names.fromString("this")), jcVariableDecl.getName())));
+        statements.append(treeMaker.Return(
+                treeMaker.Select(
+                        treeMaker.Select(treeMaker.Ident(jcClassDecl.name), names.fromString("this")),
+                        jcVariableDecl.getName())));
         JCTree.JCBlock body = treeMaker.Block(0, statements.toList());
-        return treeMaker.MethodDef(treeMaker.Modifiers(Flags.PUBLIC), getterName(jcVariableDecl.getName()), jcVariableDecl.vartype, List.nil(), List.nil(), List.nil(), body, null);
+        return treeMaker.MethodDef(treeMaker.Modifiers(Flags.PUBLIC),
+                getterName(jcVariableDecl.getName()),
+                jcVariableDecl.vartype,
+                List.nil(),
+                List.nil(),
+                List.nil(),
+                body,
+                null);
     }
 
     /**
@@ -143,18 +165,39 @@ public class InnerDataProcessor extends AbstractProcessor {
      */
     private JCTree.JCMethodDecl makeSetterMethodDecl(JCTree.JCClassDecl jcClassDecl, JCTree.JCVariableDecl jcVariableDecl) {
         ListBuffer<JCTree.JCStatement> statements = new ListBuffer<>();
-        statements.append(treeMaker.Exec(treeMaker.Assign(treeMaker.Select(treeMaker.Select(treeMaker.Ident(jcClassDecl.name), names.fromString("this")), jcVariableDecl.name), treeMaker.Ident(jcVariableDecl.name))));
+        statements.append(treeMaker.Exec(treeMaker.Assign(
+                treeMaker.Select(
+                        treeMaker.Select(treeMaker.Ident(jcClassDecl.name), names.fromString("this")),
+                        jcVariableDecl.name),
+                treeMaker.Ident(jcVariableDecl.name))));
         JCTree.JCBlock body = treeMaker.Block(0, statements.toList());
-        return treeMaker.MethodDef(treeMaker.Modifiers(Flags.PUBLIC), setterName(jcVariableDecl.getName()), treeMaker.TypeIdent(TypeTag.VOID), List.nil(), List.of(treeMaker.Param(jcVariableDecl.name, jcVariableDecl.vartype.type, jcVariableDecl.sym)), List.nil(), body, null);
+
+//        final Symbol.VarSymbol varSymbol = new Symbol.VarSymbol(0, jcVariableDecl.sym.name, jcVariableDecl.sym.type, jcVariableDecl.sym.owner);
+//        varSymbol.adr = 1;
+//        return treeMaker.MethodDef(treeMaker.Modifiers(Flags.PUBLIC),
+//                setterName(jcVariableDecl.getName()),
+//                treeMaker.TypeIdent(TypeTag.VOID),
+//                List.nil(),
+//                List.of(treeMaker.Param(jcVariableDecl.name, jcVariableDecl.vartype.type, varSymbol)),
+//                List.nil(),
+//                body,
+//                null);
+
+        return treeMaker.MethodDef(treeMaker.Modifiers(Flags.PUBLIC),
+                setterName(jcVariableDecl.getName()),
+                treeMaker.TypeIdent(TypeTag.VOID),
+                List.nil(),
+                List.of(treeMaker.Param(jcVariableDecl.name, jcVariableDecl.vartype.type, jcVariableDecl.sym)),
+                List.nil(),
+                body,
+                null);
     }
 
     private Name setterName(Name name) {
-        String s = name.toString();
-        return names.fromString("set" + s.substring(0, 1).toUpperCase() + s.substring(1));
+        return names.fromString(NameUtil.toSetterName(name.toString()));
     }
 
     private Name getterName(Name name) {
-        String s = name.toString();
-        return names.fromString("get" + s.substring(0, 1).toUpperCase() + s.substring(1));
+        return names.fromString(NameUtil.toGetterName(name.toString()));
     }
 }
